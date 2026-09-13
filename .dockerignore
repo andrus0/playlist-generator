@@ -1,0 +1,8 @@
+**/node_modules
+**/.svelte-kit
+frontend/build
+backend/.venv
+backend/*.db*
+backend/.pytest_cache
+backend/.ruff_cache
+.git

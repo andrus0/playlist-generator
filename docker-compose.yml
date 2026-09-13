@@ -1,0 +1,57 @@
+# Production stack: app (FastAPI + static frontend) and Postgres.
+# Put a reverse proxy (Traefik/nginx/Caddy) in front of `app:8000` for TLS.
+services:
+  app:
+    image: ghcr.io/andrus0/playlist-generator:${TAG:-latest}
+    build: .
+    restart: unless-stopped
+    environment:
+      PLG_DATABASE_URL: postgresql+psycopg://plg:${POSTGRES_PASSWORD:-plg}@db:5432/plg
+      PLG_AUTO_IMPORT: "true"
+      PLG_RATE_LIMIT: ${PLG_RATE_LIMIT:-60/minute}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-127.0.0.1:8080}:8000"
+    # networks: [default, proxy]   # uncomment + adapt for Traefik on the host
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: plg
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plg}
+      POSTGRES_DB: plg
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plg -d plg"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Weekly re-import (Billboard publishes on Tuesdays). Runs `import-all` inside a
+  # fresh app container.
+  updater:
+    image: ghcr.io/andrus0/playlist-generator:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PLG_DATABASE_URL: postgresql+psycopg://plg:${POSTGRES_PASSWORD:-plg}@db:5432/plg
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep $$(( 7 * 24 * 3600 ))
+          python -m app.cli import-all || echo "import failed"
+        done
+
+volumes:
+  pgdata:
+
+# networks:
+#   proxy:
+#     external: true

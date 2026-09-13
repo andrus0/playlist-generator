@@ -1,0 +1,17 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.db
+*.db-*
+.env
+
+# node / sveltekit
+node_modules/
+.svelte-kit/
+frontend/build/
+
+# misc
+.DS_Store
