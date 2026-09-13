@@ -18,6 +18,9 @@ from ..normalize import artist_key
 from ..schemas import ArtistTypeFilter, OneHitWonder, PlaylistQuery, Sort
 
 ALL_REGIONS = ["US", "UK", "AT", "DE"]
+# Regions with complete weekly charts. AT/DE only carry number-one hits, which is
+# not enough to decide whether an artist is a one-hit wonder.
+FULL_CHART_REGIONS = ["US", "UK"]
 
 
 @dataclass
@@ -87,16 +90,18 @@ def build_candidates(session: Session, q: PlaylistQuery) -> list[Track]:
         stmt = stmt.where(or_(song_has, artist_has))
 
     if q.ohw != OneHitWonder.ANY:
-        # One-hit-wonder: exactly one Top-40 song in *any* of the selected regions
+        # One-hit-wonder: exactly one Top-40 song in the selected full-chart regions
+        # (falls back to all full-chart regions if only AT/DE are selected)
+        ohw_regions = [r for r in regions if r in FULL_CHART_REGIONS] or FULL_CHART_REGIONS
         ohw_exists = exists().where(
             ArtistRegionStats.artist_id == Artist.id,
-            ArtistRegionStats.region.in_(regions),
+            ArtistRegionStats.region.in_(ohw_regions),
             ArtistRegionStats.songs_top40 == 1,
         )
         # ...and no region where they had more than one
         multi_exists = exists().where(
             ArtistRegionStats.artist_id == Artist.id,
-            ArtistRegionStats.region.in_(regions),
+            ArtistRegionStats.region.in_(ohw_regions),
             ArtistRegionStats.songs_top40 > 1,
         )
         is_ohw = and_(ohw_exists, ~multi_exists, SongChart.peak_position <= 40)
@@ -138,7 +143,7 @@ def generate(session: Session, q: PlaylistQuery) -> tuple[list[Track], int, int]
     return order_and_pick(candidates, q, seed), len(candidates), seed
 
 
-def playlist_name(q: PlaylistQuery) -> str:
+def playlist_name(q: PlaylistQuery, genre_names: dict[str, str] | None = None) -> str:
     parts: list[str] = []
     if q.artists:
         parts.append(", ".join(q.artists))
@@ -153,7 +158,8 @@ def playlist_name(q: PlaylistQuery) -> str:
     if q.artist_type != ArtistTypeFilter.ANY:
         parts.append({"person": "Solo", "group": "Bands", "duo": "Duos"}[q.artist_type.value])
     if q.genres:
-        parts.append(", ".join(q.genres))
+        names = genre_names or {}
+        parts.append(", ".join(names.get(g, g) for g in q.genres))
     if q.regions:
         parts.append("/".join(q.regions))
     return " · ".join(parts) or "Playlist"

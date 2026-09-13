@@ -13,7 +13,8 @@ class Base(DeclarativeBase):
 def _make_engine(url: str):
     kwargs = {}
     if url.startswith("sqlite"):
-        kwargs["connect_args"] = {"check_same_thread": False}
+        # long busy timeout: importers and the web app may write concurrently
+        kwargs["connect_args"] = {"check_same_thread": False, "timeout": 60}
     engine = create_engine(url, pool_pre_ping=True, **kwargs)
     if url.startswith("sqlite"):
 

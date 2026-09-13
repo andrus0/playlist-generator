@@ -36,3 +36,8 @@ def test_normalize_and_key():
 def test_decade():
     assert decade_of(1987) == "1980s"
     assert decade_of(2000) == "2000s"
+
+
+def test_comma_the_is_not_a_separator():
+    assert split_credit("Tyler, The Creator") == ["Tyler, The Creator"]
+    assert split_credit("Elton John, Dua Lipa") == ["Elton John", "Dua Lipa"]

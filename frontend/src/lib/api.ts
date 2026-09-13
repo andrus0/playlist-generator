@@ -2,7 +2,7 @@ export type Meta = {
   songs: number;
   artists: number;
   decades: string[];
-  regions: { code: string; name: string; songs: number }[];
+  regions: { code: string; name: string; songs: number; coverage: 'full' | 'no1' }[];
   genres: { slug: string; name: string; songs: number }[];
   imports: { source: string; finished_at: string; latest_chart_date: string | null }[];
 };

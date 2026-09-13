@@ -16,7 +16,7 @@ _CREDIT_SEPARATORS = [
     r"\s+and\s+",
     r"\s+\+\s+",
     r"\s*/\s*",
-    r"\s*,\s*",
+    r"\s*,(?!\s*the\s)\s*",  # "Tyler, The Creator" is one act
 ]
 _SPLIT_RE = re.compile("|".join(_CREDIT_SEPARATORS), re.IGNORECASE)
 # "(Duet With X)", "(Featuring X)" → " featuring X"
@@ -142,6 +142,33 @@ def primary_artist(credit: str) -> str:
 def artist_key(name: str) -> str:
     """Normalised key used to merge the same artist across sources ("The Beatles" == "Beatles")."""
     return normalize(_strip_the(name.strip()))
+
+
+def credit_key(credit: str) -> str:
+    """Normalised key for a full credit, robust against "Featuring"/"feat."/"ft." spelling."""
+    return " ".join(artist_key(p) for p in split_credit(credit))
+
+
+_SMALL_WORDS = {"a", "an", "and", "the", "of", "in", "on", "at", "to", "for", "or", "with", "from"}
+
+
+def smart_title(s: str) -> str:
+    """Title-case an ALL-CAPS chart string ("DON'T YOU WANT ME" → "Don't You Want Me")."""
+    if s != s.upper():
+        return s  # already mixed case
+    words = s.lower().split(" ")
+    out = []
+    for i, w in enumerate(words):
+        if not w:
+            continue
+        if i and w in _SMALL_WORDS:
+            out.append(w)
+            continue
+        # capitalise the first letter after each hyphen/slash/paren too
+        out.append(
+            re.sub(r"(^['\"]?|[-/(\"])([a-z])", lambda m: m.group(1) + m.group(2).upper(), w)
+        )
+    return " ".join(out)
 
 
 def decade_of(year: int) -> str:

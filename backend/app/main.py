@@ -20,16 +20,23 @@ log = logging.getLogger(__name__)
 
 
 def _auto_import() -> None:
-    from .importers import billboard
+    """First start on an empty database: Billboard + AT/DE first (minutes), so the app
+    is usable quickly; then the long-running UK crawl and MusicBrainz enrichment."""
+    from .importers import all as all_importers
+    from .importers import billboard, wikipedia
     from .importers.base import compute_artist_stats
+    from .models import Region
 
     with SessionLocal() as s:
         if s.scalar(select(func.count(Song.id))):
             return
         log.info("database empty – running initial import")
         billboard.run(s)
+        for region in (Region.AT, Region.DE):
+            wikipedia.run(s, region)
         compute_artist_stats(s)
-        log.info("initial import done")
+        log.info("initial import done – starting UK crawl and enrichment in background")
+        all_importers.run(s)
 
 
 @asynccontextmanager

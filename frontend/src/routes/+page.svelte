@@ -155,6 +155,9 @@
                 }}
               />
               <span>{r.name}</span>
+              {#if r.coverage === 'no1' && r.songs}
+                <em class="tag" title="Für diese Charts sind nur die Nummer-1-Hits verfügbar">nur Nr. 1</em>
+              {/if}
               <small>{r.songs ? r.songs.toLocaleString('de-AT') : 'bald'}</small>
             </label>
           {/each}
@@ -170,6 +173,9 @@
     <div class="field">
       <span class="label">One-Hit-Wonder</span>
       <Segmented options={ohws} bind:value={q.ohw} name="One-Hit-Wonder" />
+      {#if q.ohw !== 'any'}
+        <small class="muted">Genau ein Top-40-Hit in den US-/UK-Charts, sonst keiner.</small>
+      {/if}
     </div>
 
     <div class="field">
@@ -288,8 +294,9 @@
           über den sich der Link exakt reproduzieren lässt.
         </p>
         <p class="muted">
-          Datenbasis: Billboard Hot 100 seit 1958. UK, Ö3 Austria Top 40 und deutsche Charts sowie
-          Genres und Artist-Typen folgen.
+          Datenbasis: Billboard Hot 100 (seit 1958) und UK Official Singles Chart (seit 1952)
+          komplett, dazu alle Nummer-1-Hits aus Österreich und Deutschland. Genres und
+          Artist-Typen stammen von MusicBrainz.
         </p>
       </div>
     {/if}
@@ -298,7 +305,9 @@
 
 <footer class="wrap muted">
   <a href="https://github.com/andrus0/playlist-generator">Quellcode auf GitHub</a> ·
-  <a href="/api/docs">API</a>
+  <a href="/api/docs">API</a> · Daten: Billboard, Official Charts Company,
+  <a href="https://de.wikipedia.org/wiki/Liste_der_Nummer-eins-Hits_in_%C3%96sterreich">Wikipedia</a> (CC BY-SA),
+  <a href="https://musicbrainz.org">MusicBrainz</a>
 </footer>
 
 <style>
@@ -421,6 +430,16 @@
   .regions small {
     margin-left: auto;
     color: var(--muted);
+  }
+  .tag {
+    font-style: normal;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--muted);
+    white-space: nowrap;
   }
   .regions input {
     accent-color: var(--accent);

@@ -38,6 +38,8 @@ class Artist(Base):
     type: Mapped[str] = mapped_column(String(16), default=ArtistType.UNKNOWN, index=True)
     mb_id: Mapped[str | None] = mapped_column(String(36), unique=True)
     country: Mapped[str | None] = mapped_column(String(2))
+    # date of the last MusicBrainz lookup (None = not enriched yet)
+    mb_checked: Mapped[date | None] = mapped_column(Date)
 
     songs: Mapped[list["Song"]] = relationship(back_populates="artist")
     stats: Mapped[list["ArtistRegionStats"]] = relationship(

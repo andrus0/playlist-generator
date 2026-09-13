@@ -8,7 +8,7 @@ from sqlalchemy import case, delete, func, select
 from sqlalchemy.orm import Session
 
 from ..models import Artist, ArtistRegionStats, ImportRun, Song, SongChart
-from ..normalize import artist_key, normalize, primary_artist
+from ..normalize import artist_key, credit_key, normalize, primary_artist
 
 log = logging.getLogger(__name__)
 
@@ -25,12 +25,16 @@ class ChartEntry:
     last_date: date
 
 
+def song_key(title: str, credit: str) -> tuple[str, str]:
+    return normalize(title), credit_key(credit)
+
+
 def aggregate_weeks(rows) -> dict[tuple[str, str], ChartEntry]:
     """Fold week-by-week rows (title, artist, position, date) into one ChartEntry per song."""
     agg: dict[tuple[str, str], ChartEntry] = {}
     weeks: dict[tuple[str, str], int] = {}
     for title, artist, position, week in rows:
-        key = (normalize(title), normalize(artist))
+        key = song_key(title, artist)
         if not key[0] or not key[1]:
             continue
         e = agg.get(key)
@@ -47,6 +51,22 @@ def aggregate_weeks(rows) -> dict[tuple[str, str], ChartEntry]:
     return agg
 
 
+def dedupe(entries: list[ChartEntry]) -> list[ChartEntry]:
+    """Merge entries that normalise to the same song (spelling variants of title/credit)."""
+    merged: dict[tuple[str, str], ChartEntry] = {}
+    for e in entries:
+        key = song_key(e.title, e.artist)
+        m = merged.get(key)
+        if m is None:
+            merged[key] = ChartEntry(**vars(e))
+        else:
+            m.peak_position = min(m.peak_position, e.peak_position)
+            m.weeks_on_chart = max(m.weeks_on_chart, e.weeks_on_chart)
+            m.first_date = min(m.first_date, e.first_date)
+            m.last_date = max(m.last_date, e.last_date)
+    return list(merged.values())
+
+
 def _get_or_create_artists(session: Session, names: set[str]) -> dict[str, int]:
     """Map artist_key → artists.id, creating missing rows."""
     keys = {artist_key(n): n for n in names}
@@ -61,8 +81,17 @@ def _get_or_create_artists(session: Session, names: set[str]) -> dict[str, int]:
     return existing
 
 
-def upsert_entries(session: Session, region: str, entries: list[ChartEntry]) -> int:
-    """Insert/update songs and their chart run for one region. Returns number of songs touched."""
+def upsert_entries(
+    session: Session, region: str, entries: list[ChartEntry], *, merge: bool = False
+) -> int:
+    """Insert/update songs and their chart run for one region. Returns number of songs touched.
+
+    merge=False: the entries are the complete dataset → chart rows are replaced.
+    merge=True: incremental batch → peak=min, weeks=max, first=min, last=max.
+    """
+    entries = dedupe(entries)
+    if not entries:
+        return 0
     artists = _get_or_create_artists(session, {primary_artist(e.artist) for e in entries})
 
     existing_songs = {
@@ -72,16 +101,23 @@ def upsert_entries(session: Session, region: str, entries: list[ChartEntry]) -> 
         ).all()
     }
     existing_charts = {
-        sid: cid
-        for cid, sid in session.execute(
-            select(SongChart.id, SongChart.song_id).where(SongChart.region == region)
+        row.song_id: row
+        for row in session.execute(
+            select(
+                SongChart.id,
+                SongChart.song_id,
+                SongChart.peak_position,
+                SongChart.weeks_on_chart,
+                SongChart.first_date,
+                SongChart.last_date,
+            ).where(SongChart.region == region)
         ).all()
     }
 
     new_songs: list[Song] = []
     pending: list[tuple[tuple[str, str], ChartEntry]] = []
     for e in entries:
-        key = (normalize(e.title), normalize(e.artist))
+        key = song_key(e.title, e.artist)
         if key in existing_songs:
             sid, year = existing_songs[key]
             if e.first_date.year < year:
@@ -117,10 +153,16 @@ def upsert_entries(session: Session, region: str, entries: list[ChartEntry]) -> 
             last_date=e.last_date,
         )
         if sid in existing_charts:
+            old = existing_charts[sid]
+            if merge:
+                values = dict(
+                    peak_position=min(old.peak_position, e.peak_position),
+                    weeks_on_chart=max(old.weeks_on_chart, e.weeks_on_chart),
+                    first_date=min(old.first_date, e.first_date),
+                    last_date=max(old.last_date, e.last_date),
+                )
             session.execute(
-                SongChart.__table__.update()
-                .where(SongChart.id == existing_charts[sid])
-                .values(**values)
+                SongChart.__table__.update().where(SongChart.id == old.id).values(**values)
             )
         else:
             charts_new.append(dict(song_id=sid, region=region, **values))

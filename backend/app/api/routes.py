@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db import get_session
-from ..models import Artist, Genre, ImportRun, Song, SongChart, SongGenre
+from ..models import Artist, ArtistGenre, Genre, ImportRun, Song, SongChart
 from ..normalize import normalize
 from ..schemas import (
     ArtistOut,
@@ -22,7 +22,7 @@ from ..schemas import (
     playlist_query,
 )
 from ..services import export
-from ..services.generator import ALL_REGIONS, generate, playlist_name
+from ..services.generator import ALL_REGIONS, FULL_CHART_REGIONS, generate, playlist_name
 
 limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_limit])
 router = APIRouter(prefix="/api")
@@ -52,12 +52,15 @@ def meta(session: Annotated[Session, Depends(get_session)]) -> MetaOut:
     region_counts = dict(
         session.execute(select(SongChart.region, func.count()).group_by(SongChart.region)).all()
     )
+    # songs per genre = songs tagged directly + songs whose artist carries the genre
     genres = session.execute(
-        select(Genre.slug, Genre.name, func.count(SongGenre.song_id))
-        .outerjoin(SongGenre, SongGenre.genre_id == Genre.id)
+        select(Genre.slug, Genre.name, func.count(func.distinct(Song.id)))
+        .outerjoin(ArtistGenre, ArtistGenre.genre_id == Genre.id)
+        .outerjoin(Song, Song.artist_id == ArtistGenre.artist_id)
         .group_by(Genre.id)
         .order_by(Genre.name)
     ).all()
+    genres = [g for g in genres if g[2] > 0]
     imports = session.execute(
         select(
             ImportRun.source, func.max(ImportRun.finished_at), func.max(ImportRun.latest_chart_date)
@@ -68,7 +71,12 @@ def meta(session: Annotated[Session, Depends(get_session)]) -> MetaOut:
         artists=artists,
         decades=decades,
         regions=[
-            {"code": r, "name": REGION_NAMES[r], "songs": region_counts.get(r, 0)}
+            {
+                "code": r,
+                "name": REGION_NAMES[r],
+                "songs": region_counts.get(r, 0),
+                "coverage": "full" if r in FULL_CHART_REGIONS else "no1",
+            }
             for r in ALL_REGIONS
         ],
         genres=[{"slug": s, "name": n, "songs": c} for s, n, c in genres],
@@ -103,7 +111,9 @@ def artists(
     ]
 
 
-def _to_out(q: PlaylistQuery, tracks, total: int, seed: int) -> PlaylistOut:
+def _to_out(
+    q: PlaylistQuery, tracks, total: int, seed: int, genre_names: dict[str, str] | None = None
+) -> PlaylistOut:
     out = []
     for i, t in enumerate(tracks, 1):
         out.append(
@@ -124,7 +134,9 @@ def _to_out(q: PlaylistQuery, tracks, total: int, seed: int) -> PlaylistOut:
             )
         )
     q = q.model_copy(update={"seed": seed})
-    return PlaylistOut(name=playlist_name(q), seed=seed, total_matching=total, tracks=out, query=q)
+    return PlaylistOut(
+        name=playlist_name(q, genre_names), seed=seed, total_matching=total, tracks=out, query=q
+    )
 
 
 @router.get("/playlist", response_model=PlaylistOut)
@@ -136,7 +148,12 @@ def playlist(
     format: Format = Format.JSON,
 ):
     tracks, total, seed = generate(session, q)
-    out = _to_out(q, tracks, total, seed)
+    genre_names = (
+        dict(session.execute(select(Genre.slug, Genre.name).where(Genre.slug.in_(q.genres))).all())
+        if q.genres
+        else None
+    )
+    out = _to_out(q, tracks, total, seed, genre_names)
     filename = "playlist"
     match format:
         case Format.TXT:

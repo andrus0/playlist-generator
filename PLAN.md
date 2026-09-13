@@ -18,11 +18,12 @@ Decisions from the initial planning session (2026-09-13):
 - [x] SvelteKit frontend with share links
 - [x] Dockerfile, docker-compose (app + Postgres + weekly updater), CI → GHCR
 
-## Phase 2 — more data
-- [ ] UK Official Singles Chart importer (officialcharts.com)
-- [ ] AT / DE: number-one lists and year-end charts from Wikipedia
-- [ ] MusicBrainz enrichment: artist type (person/group/duo), genres, song length
-- [ ] Genre filter + duration-based playlist length in the UI
+## Phase 2 — more data ✅
+- [x] UK Official Singles Chart importer (officialcharts.com, incremental crawl)
+- [x] AT / DE: number-one lists from Wikipedia (chart companies block crawlers)
+- [x] MusicBrainz enrichment: artist type (person/group/duo), country, genres
+- [x] Genre filter (multi-select) and region coverage hints in the UI
+- [ ] Song length (would need ~1 MusicBrainz recording lookup per song) → later
 
 ## Phase 3 — deploy
 - [ ] Server access (Ventuscloud host, SSH port TBD)
