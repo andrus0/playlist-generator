@@ -5,7 +5,7 @@ position (No. 1 / Top 10 / Top 40), one-hit-wonders, genre, band vs. solo
 artist or specific artists — get a track list as text, `.txt`, `.csv` or
 `.m3u`. Every playlist has a seed, so a share link reproduces it exactly.
 
-Live: https://playlist.kingsyard.at (soon)
+Live: https://moneymaker.kingscourt.at (soon)
 
 ## Data
 
